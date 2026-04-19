@@ -92,7 +92,7 @@ export async function GET(): Promise<Response> {
 
     // 1. 分页拉取全部消息列表
     type MsgItem = { title: string; orderNo: string; createTime: string }
-    const PAGE_SIZE = 50
+    const PAGE_SIZE = 10
     const messages: MsgItem[] = []
     let pageIndex = 1
 
@@ -108,7 +108,7 @@ export async function GET(): Promise<Response> {
       messages.push(...page)
       if (page.length < PAGE_SIZE) break
       pageIndex++
-      await new Promise(r => setTimeout(r, 100))
+      await new Promise(r => setTimeout(r, 1000))
     }
 
     result.total_fetched = messages.length
