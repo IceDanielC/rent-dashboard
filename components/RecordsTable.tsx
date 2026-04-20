@@ -1,7 +1,8 @@
 'use client'
 import { useState, useCallback } from 'react'
 import { ProTable } from '@ant-design/pro-components'
-import { Tag } from 'antd'
+import { Tag, Popconfirm, Button } from 'antd'
+import { DeleteOutlined } from '@ant-design/icons'
 import { Resizable } from 'react-resizable'
 import type { ResizeCallbackData } from 'react-resizable'
 import type { ProColumns } from '@ant-design/pro-components'
@@ -29,6 +30,7 @@ interface Props {
   onSort: (key: string, dir: 'asc' | 'desc') => void
   page: number
   onPage: (p: number) => void
+  onDelete: (id: number) => void
 }
 
 const BASE_COLUMNS: ProColumns<RentRecord>[] = [
@@ -64,7 +66,7 @@ function ResizableTitle(props: React.HTMLAttributes<HTMLElement> & { onResize: (
   )
 }
 
-export default function RecordsTable({ data, loading, sortKey, sortDir, onSort, page, onPage }: Props) {
+export default function RecordsTable({ data, loading, sortKey, sortDir, onSort, page, onPage, onDelete }: Props) {
   const [colWidths, setColWidths] = useState<Record<string, number>>(
     () => Object.fromEntries(BASE_COLUMNS.map(c => [c.dataIndex as string, c.width as number]))
   )
@@ -76,16 +78,37 @@ export default function RecordsTable({ data, loading, sortKey, sortDir, onSort, 
   const getSortOrder = (key: string): SortOrder | undefined =>
     sortKey === key ? (sortDir === 'asc' ? 'ascend' : 'descend') : undefined
 
+  const actionColumn: ProColumns<RentRecord> = {
+    title: '操作',
+    dataIndex: 'action',
+    width: 70,
+    fixed: 'right',
+    render: (_, record) => (
+      <Popconfirm
+        title="确认删除这条记录？"
+        onConfirm={() => onDelete(record.id)}
+        okText="删除"
+        cancelText="取消"
+        okButtonProps={{ danger: true }}
+      >
+        <Button type="text" danger icon={<DeleteOutlined />} size="small" />
+      </Popconfirm>
+    ),
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const columns: any[] = BASE_COLUMNS.map(col => ({
-    ...col,
-    width: colWidths[col.dataIndex as string] ?? col.width,
-    sortOrder: getSortOrder(col.dataIndex as string),
-    onHeaderCell: (column: ProColumns<RentRecord>) => ({
-      width: typeof column.width === 'number' ? column.width : undefined,
-      onResize: handleResize(col.dataIndex as string),
-    }),
-  }))
+  const columns: any[] = [
+    ...BASE_COLUMNS.map(col => ({
+      ...col,
+      width: colWidths[col.dataIndex as string] ?? col.width,
+      sortOrder: getSortOrder(col.dataIndex as string),
+      onHeaderCell: (column: ProColumns<RentRecord>) => ({
+        width: typeof column.width === 'number' ? column.width : undefined,
+        onResize: handleResize(col.dataIndex as string),
+      }),
+    })),
+    actionColumn,
+  ]
 
   return (
     <ProTable<RentRecord>

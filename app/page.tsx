@@ -1,7 +1,9 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { Typography, Button, Tooltip, message, Badge, Space } from 'antd'
-import { SyncOutlined, ClockCircleOutlined } from '@ant-design/icons'
+import { Typography, Button, Tooltip, message, Badge, Space, Modal, Form, Input, Select, DatePicker, InputNumber } from 'antd'
+import { SyncOutlined, ClockCircleOutlined, PlusOutlined, BarChartOutlined, AppstoreOutlined } from '@ant-design/icons'
+import dayjs from 'dayjs'
+import Link from 'next/link'
 import StatsCards from '@/components/StatsCards'
 import IncomeChart from '@/components/IncomeChart'
 import FilterBar, { type Filters } from '@/components/FilterBar'
@@ -37,6 +39,9 @@ export default function Home() {
   const [statsLoading, setStatsLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [syncStatus, setSyncStatus] = useState<SyncStatus>({ last_sync: null, last_added: null })
+  const [addModalOpen, setAddModalOpen] = useState(false)
+  const [addSubmitting, setAddSubmitting] = useState(false)
+  const [addForm] = Form.useForm()
   const [msgApi, contextHolder] = message.useMessage()
 
   const loadStats = useCallback(() => {
@@ -112,12 +117,56 @@ export default function Home() {
     setPage(1)
   }
 
+  const handleAddSubmit = useCallback(async () => {
+    try {
+      const values = await addForm.validateFields()
+      setAddSubmitting(true)
+      const income = parseFloat(values.income ?? '0') || 0
+      const payload = {
+        ...values,
+        msg_time: values.msg_time ? dayjs(values.msg_time).format('YYYY-MM-DD HH:mm:ss') : '',
+        actual_income: parseFloat((income * 0.8).toFixed(2)),
+      }
+      const res = await fetch('/api/records', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json()
+      if (data.ok) {
+        msgApi.success('新增成功')
+        setAddModalOpen(false)
+        addForm.resetFields()
+        loadStats()
+        loadRecords()
+      } else {
+        msgApi.error(data.error ?? '新增失败')
+      }
+    } catch {
+      // validateFields 失败时不处理
+    } finally {
+      setAddSubmitting(false)
+    }
+  }, [addForm, msgApi, loadStats, loadRecords])
+
+  const handleDelete = useCallback(async (id: number) => {
+    const res = await fetch(`/api/records?id=${id}`, { method: 'DELETE' })
+    const data = await res.json()
+    if (data.ok) {
+      msgApi.success('已删除')
+      loadStats()
+      loadRecords()
+    } else {
+      msgApi.error(data.error ?? '删除失败')
+    }
+  }, [msgApi, loadStats, loadRecords])
+
   return (
     <div style={{ minHeight: '100vh', background: '#141414', padding: '24px' }}>
       {contextHolder}
       <div style={{ maxWidth: 1600, margin: '0 auto' }}>
         {/* 顶部标题栏 */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
           <Typography.Title level={4} style={{ margin: 0, color: 'rgba(255,255,255,0.85)' }}>
             🎮 悠悠有品 · 转租收益记录
           </Typography.Title>
@@ -140,6 +189,15 @@ export default function Home() {
               共 {stats?.total ?? '...'} 条记录
             </Typography.Text>
 
+            {/* 手动新增按钮 */}
+            <Button
+              icon={<PlusOutlined />}
+              onClick={() => setAddModalOpen(true)}
+              size="small"
+            >
+              新增记录
+            </Button>
+
             {/* 手动同步按钮 */}
             <Tooltip title="从悠悠有品拉取最新消息，自动写入数据库">
               <Button
@@ -152,6 +210,18 @@ export default function Home() {
                 同步数据
               </Button>
             </Tooltip>
+          </Space>
+        </div>
+
+        {/* 导航链接行 */}
+        <div style={{ marginBottom: 20 }}>
+          <Space size={8}>
+            <Link href="/totalCommodity">
+              <Button icon={<AppstoreOutlined />} size="small">饰品总览</Button>
+            </Link>
+            <Link href="/revenue">
+              <Button icon={<BarChartOutlined />} size="small">收益统计</Button>
+            </Link>
           </Space>
         </div>
 
@@ -179,8 +249,61 @@ export default function Home() {
           onSort={handleSort}
           page={page}
           onPage={setPage}
+          onDelete={handleDelete}
         />
       </div>
+
+      {/* 手动新增记录弹窗 */}
+      <Modal
+        title="手动新增记录"
+        open={addModalOpen}
+        onOk={handleAddSubmit}
+        onCancel={() => { setAddModalOpen(false); addForm.resetFields() }}
+        confirmLoading={addSubmitting}
+        okText="确认新增"
+        cancelText="取消"
+        width={520}
+      >
+        <Form form={addForm} layout="vertical" style={{ marginTop: 16 }}>
+          <Form.Item name="msg_time" label="消息时间" rules={[{ required: true, message: '请选择时间' }]}>
+            <DatePicker showTime style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="msg_type" label="消息类型" rules={[{ required: true, message: '请选择类型' }]}>
+            <Select options={[
+              { value: '转租成功', label: '转租成功' },
+              { value: '自动确认归还成功', label: '自动确认归还成功' },
+              { value: '对方已续租', label: '对方已续租' },
+            ]} />
+          </Form.Item>
+          <Form.Item name="order_no" label="订单号" rules={[{ required: true, message: '请输入订单号' }]}>
+            <Input placeholder="请输入订单号" />
+          </Form.Item>
+          <Form.Item name="item_name" label="饰品名称">
+            <Input placeholder="请输入饰品名称" />
+          </Form.Item>
+          <Form.Item name="wear_level" label="磨损等级">
+            <Select allowClear options={[
+              { value: '崭新出厂', label: '崭新出厂' },
+              { value: '轻微磨损', label: '轻微磨损' },
+              { value: '略有磨损', label: '略有磨损' },
+              { value: '久经沙场', label: '久经沙场' },
+              { value: '战痕累累', label: '战痕累累' },
+            ]} />
+          </Form.Item>
+          <Form.Item name="wear_value" label="磨损值">
+            <InputNumber min={0} max={1} step={0.000001} style={{ width: '100%' }} placeholder="0.000000" />
+          </Form.Item>
+          <Form.Item name="income" label="租金（元）" rules={[{ required: true, message: '请输入租金' }]}>
+            <InputNumber min={0} step={0.01} style={{ width: '100%' }} placeholder="0.00" prefix="¥" />
+          </Form.Item>
+          <Form.Item name="lease_days" label="租用天数">
+            <InputNumber min={0} style={{ width: '100%' }} placeholder="0" />
+          </Form.Item>
+          <Form.Item name="order_status" label="订单状态">
+            <Input placeholder="如：已完成" />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   )
 }

@@ -3,6 +3,66 @@ export const dynamic = 'force-dynamic'
 import { getDb } from '@/lib/db'
 import type { RentRecord, RecordsResponse } from '@/lib/types'
 
+export async function POST(req: NextRequest) {
+  try {
+    const db = getDb()
+    const body = await req.json()
+    const {
+      msg_time, msg_type, order_no, item_name,
+      wear_level, wear_value, income, actual_income,
+      lease_days, order_status,
+    } = body
+
+    if (!msg_time || !order_no) {
+      return NextResponse.json({ error: '缺少必填字段：msg_time、order_no' }, { status: 400 })
+    }
+
+    const result = db.prepare(`
+      INSERT OR IGNORE INTO records
+        (msg_time, msg_type, order_no, item_name, wear_level, wear_value, income, actual_income, lease_days, order_status)
+      VALUES
+        (@msg_time, @msg_type, @order_no, @item_name, @wear_level, @wear_value, @income, @actual_income, @lease_days, @order_status)
+    `).run({
+      msg_time:      msg_time ?? '',
+      msg_type:      msg_type ?? '',
+      order_no:      order_no ?? '',
+      item_name:     item_name ?? '',
+      wear_level:    wear_level ?? '',
+      wear_value:    parseFloat(wear_value ?? '0') || 0,
+      income:        parseFloat(income ?? '0') || 0,
+      actual_income: parseFloat(actual_income ?? '0') || 0,
+      lease_days:    parseInt(lease_days ?? '0') || 0,
+      order_status:  order_status ?? '',
+    })
+
+    if (result.changes === 0) {
+      return NextResponse.json({ error: `订单号 ${order_no} 已存在` }, { status: 409 })
+    }
+    return NextResponse.json({ ok: true, id: result.lastInsertRowid })
+  } catch (e) {
+    console.error(e)
+    return NextResponse.json({ error: String(e) }, { status: 500 })
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const db = getDb()
+    const id = req.nextUrl.searchParams.get('id')
+    if (!id) {
+      return NextResponse.json({ error: '缺少参数 id' }, { status: 400 })
+    }
+    const result = db.prepare('DELETE FROM records WHERE id = ?').run(id)
+    if (result.changes === 0) {
+      return NextResponse.json({ error: '记录不存在' }, { status: 404 })
+    }
+    return NextResponse.json({ ok: true })
+  } catch (e) {
+    console.error(e)
+    return NextResponse.json({ error: String(e) }, { status: 500 })
+  }
+}
+
 const SORT_WHITELIST = new Set([
   'msg_time', 'msg_type', 'item_name', 'wear_level',
   'wear_value', 'income', 'actual_income', 'lease_days', 'order_status'

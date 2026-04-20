@@ -37,6 +37,22 @@ function initDb(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_item_name   ON records(item_name);
   `)
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS assets (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      item_name   TEXT NOT NULL,
+      wear_value  REAL NOT NULL,
+      buy_time    TEXT NOT NULL,
+      buy_price   REAL NOT NULL,
+      sell_price  REAL NOT NULL DEFAULT 0
+    );
+  `)
+  // 兼容旧数据库：若 sell_price 列不存在则补加
+  const cols = db.prepare("PRAGMA table_info(assets)").all() as { name: string }[]
+  if (!cols.some(c => c.name === 'sell_price')) {
+    db.exec('ALTER TABLE assets ADD COLUMN sell_price REAL NOT NULL DEFAULT 0')
+  }
+
   // 检查是否已有数据
   const count = (db.prepare('SELECT COUNT(*) as c FROM records').get() as { c: number }).c
   if (count > 0) return
