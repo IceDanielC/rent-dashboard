@@ -4,30 +4,35 @@ import { getDb } from '@/lib/db'
 
 // ===== 悠悠有品 API 配置 =====
 // Authorization / Cookie 等 token 会过期，过期后在 .env.local 里更新即可
-const API_HEADERS: Record<string, string> = {
-  'Host': 'api.youpin898.com',
-  'Accept': '*/*',
-  'AppType': '3',
-  'User-Agent': 'iOS/26.4.1 AppleStore com.uu898.uusteam/5.43.0 Alamofire/5.2.2',
-  'DeviceToken': process.env.YOUPIN_DEVICE_TOKEN || '26BB80E5-871E-4D70-AF0C-1BEF32CAA284',
-  'DeviceSysVersion': '26.4.1',
-  'requesttag': 'b8332d3aeba17d0f6a672b3d8c78caee',
-  'signature': '86679ac5512127066027a0a34df83a68d42c03e64a519e520084e2c0317316b208368157672680b3539a99564935611463c4f2501974ddfa8e7c6d03d41208840b5e8f120de6546c5d78318d789427ad',
-  'version': '5.43.0',
-  'Gameid': '730',
-  'uk': process.env.YOUPIN_UK || '5FJoH8UeqHRyKa66nX6eQ004shnMC68HysbdchleC1rUKGKRGIdY3UnpLtlcrz31J',
-  'package-type': 'uuyp',
-  'platform': 'ios',
-  'Connection': 'keep-alive',
-  'Authorization': process.env.YOUPIN_TOKEN ?? '',
-  'Cookie': process.env.YOUPIN_COOKIE || 'acw_tc=0a15142a17765346175306816e2da6f967a68adfbcd283625f1500c642dab1',
-  'api-version': '1.0',
-  'Accept-Language': 'zh-Hans-CN;q=1.0, en-GB;q=0.9, zh-Hant-CN;q=0.8',
-  'deviceUk': process.env.YOUPIN_DEVICE_UK || '5FJocoeaaepIP1l3NdirQE2yuRz2Aetd2PuwNLqyqkrRuwuU2GYRz8IlCztTd9B1P',
-  'Content-Type': 'application/json',
-  'App-Version': '5.43.0',
-  'Accept-Encoding': 'gzip, deflate',
-  'currentTheme': 'Light',
+function getApiHeaders(): Record<string, string> {
+  const requesttag = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('')
+  return {
+    'Host': 'api.youpin898.com',
+    'Accept': '*/*',
+    'AppType': '3',
+    'User-Agent': 'iOS/26.4.1 AppleStore com.uu898.uusteam/5.43.0 Alamofire/5.2.2',
+    'DeviceToken': process.env.YOUPIN_DEVICE_TOKEN || '26BB80E5-871E-4D70-AF0C-1BEF32CAA284',
+    'DeviceSysVersion': '26.4.1',
+    'requesttag': requesttag,
+    // 'signature': '86679ac5512127066027a0a34df83a68d42c03e64a519e520084e2c0317316b208368157672680b3539a99564935611463c4f2501974ddfa8e7c6d03d41208840b5e8f120de6546c5d78318d789427ad',
+    'version': '5.43.0',
+    'Gameid': '730',
+    // 'uk': process.env.YOUPIN_UK || '5FJoH8UeqHRyKa66nX6eQ004shnMC68HysbdchleC1rUKGKRGIdY3UnpLtlcrz31J',
+    'package-type': 'uuyp',
+    'platform': 'ios',
+    'Connection': 'keep-alive',
+    'Authorization': process.env.YOUPIN_TOKEN ?? '',
+    // 'Cookie': process.env.YOUPIN_COOKIE || 'acw_tc=0a15142a17765346175306816e2da6f967a68adfbcd283625f1500c642dab1',
+    'api-version': '1.0',
+    'Accept-Language': 'zh-Hans-CN;q=1.0, en-GB;q=0.9, zh-Hant-CN;q=0.8',
+    'deviceUk': process.env.YOUPIN_DEVICE_UK || '5FJocoeaaepIP1l3NdirQE2yuRz2Aetd2PuwNLqyqkrRuwuU2GYRz8IlCztTd9B1P',
+    'Content-Type': 'application/json',
+    'App-Version': '5.43.0',
+    'Accept-Encoding': 'gzip, deflate',
+    'currentTheme': 'Light',
+  }
 }
 
 const TARGET_TITLES = new Set(['转租成功', '自动确认归还成功', '对方已续租'])
@@ -47,31 +52,33 @@ async function decompressResponse(res: Response): Promise<unknown> {
 }
 
 async function fetchMessageList(pageIndex = 1, pageSize = 500): Promise<unknown> {
+  const headers = getApiHeaders()
   const res = await fetch('https://api.youpin898.com/api/youpin/mailbox/messageList', {
     method: 'POST',
-    headers: API_HEADERS,
+    headers,
     body: JSON.stringify({
       AppType: '3',
       Platform: 'ios',
       pageIndex,
       pageSize,
       Version: '5.43.0',
-      SessionId: API_HEADERS['DeviceToken'],
+      SessionId: headers['DeviceToken'],
     }),
   })
   return decompressResponse(res)
 }
 
 async function fetchOrderDetail(orderId: string): Promise<unknown> {
+  const headers = getApiHeaders()
   const res = await fetch('https://api.youpin898.com/api/youpin/bff/order/v2/detail', {
     method: 'POST',
-    headers: API_HEADERS,
+    headers,
     body: JSON.stringify({
       AppType: '3',
       Platform: 'ios',
       orderId,
       Version: '5.43.0',
-      SessionId: API_HEADERS['DeviceToken'],
+      SessionId: headers['DeviceToken'],
     }),
   })
   return decompressResponse(res)
@@ -92,12 +99,10 @@ export async function GET(): Promise<Response> {
 
     // 1. 分页拉取全部消息列表
     type MsgItem = { title: string; orderNo: string; createTime: string }
-    const PAGE_SIZE = 10
     const messages: MsgItem[] = []
-    let pageIndex = 1
+    const pageIndex = 1
 
-    while (true) {
-      const msgResp = await fetchMessageList(pageIndex, PAGE_SIZE) as {
+      const msgResp = await fetchMessageList(pageIndex) as {
         code: number
         data?: { datas?: MsgItem[]; count?: number }
       }
@@ -106,10 +111,6 @@ export async function GET(): Promise<Response> {
       }
       const page = msgResp.data?.datas ?? []
       messages.push(...page)
-      if (page.length < PAGE_SIZE) break
-      pageIndex++
-      await new Promise(r => setTimeout(r, 1000))
-    }
 
     result.total_fetched = messages.length
 
