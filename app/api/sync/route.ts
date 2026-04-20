@@ -19,7 +19,7 @@ const API_HEADERS: Record<string, string> = {
   'package-type': 'uuyp',
   'platform': 'ios',
   'Connection': 'keep-alive',
-  'Authorization': process.env.YOUPIN_TOKEN || 'Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJqdGkiOiJlYTQyMDRiOTA2MWI0OTk0OTY4MjAxYmYzNDE4MmUwOSIsIm5hbWVpZCI6IjEyMDA2NTYiLCJJZCI6IjEyMDA2NTYiLCJ1bmlxdWVfbmFtZSI6IuWIsOacn-WLv-W9kui_mOeZveeOqeW4rui9rOWPkeWkp-i0oiIsIk5hbWUiOiLliLDmnJ_li7_lvZLov5jnmb3njqnluK7ovazlj5HlpKfotKIiLCJuYmYiOjE3NzQ2MjE0MzgsImV4cCI6MTc3OTYxMTAzOCwiaXNzIjoieW91cGluODk4LmNvbSIsInZlcnNpb24iOiJtQm4iLCJkZXZpY2VJZCI6IjI2QkI4MEU1LTg3MUUtNEQ3MC1BRjBDLTFCRUYzMkNBQTI4NCIsImF1ZCI6InVzZXIifQ.78c_rZsXl98xzUPYR5thfdScqqF5hemY1WHYgk2QWTc',
+  'Authorization': process.env.YOUPIN_TOKEN ?? '',
   'Cookie': process.env.YOUPIN_COOKIE || 'acw_tc=0a15142a17765346175306816e2da6f967a68adfbcd283625f1500c642dab1',
   'api-version': '1.0',
   'Accept-Language': 'zh-Hans-CN;q=1.0, en-GB;q=0.9, zh-Hant-CN;q=0.8',
