@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Typography, Button, Tooltip, message, Badge, Space, Modal, Form, Input, Select, DatePicker, InputNumber } from 'antd'
 import { SyncOutlined, ClockCircleOutlined, PlusOutlined, BarChartOutlined, AppstoreOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
@@ -8,7 +8,7 @@ import StatsCards from '@/components/StatsCards'
 import IncomeChart from '@/components/IncomeChart'
 import FilterBar, { type Filters } from '@/components/FilterBar'
 import RecordsTable from '@/components/RecordsTable'
-import type { Stats, RecordsResponse } from '@/lib/types'
+import type { Stats, RecordsResponse, RentRecord } from '@/lib/types'
 
 const DEFAULT_FILTERS: Filters = {
   dateFrom: '', dateTo: '', msgType: '', keyword: '', wearLevels: [],
@@ -38,6 +38,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false)
   const [statsLoading, setStatsLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
+  const syncingRef = useRef(false)
   const [syncStatus, setSyncStatus] = useState<SyncStatus>({ last_sync: null, last_added: null })
   const [addModalOpen, setAddModalOpen] = useState(false)
   const [addSubmitting, setAddSubmitting] = useState(false)
@@ -83,6 +84,8 @@ export default function Home() {
   useEffect(() => { loadRecords() }, [loadRecords])
 
   const handleSync = useCallback(async () => {
+    if (syncingRef.current) return
+    syncingRef.current = true
     setSyncing(true)
     msgApi.loading({ content: '正在同步数据...', key: 'sync', duration: 0 })
     try {
@@ -103,6 +106,7 @@ export default function Home() {
       msgApi.error({ content: `同步请求失败: ${String(e)}`, key: 'sync', duration: 5 })
     } finally {
       setSyncing(false)
+      syncingRef.current = false
     }
   }, [msgApi, loadStats, loadRecords, loadSyncStatus])
 
@@ -160,6 +164,21 @@ export default function Home() {
       msgApi.error(data.error ?? '删除失败')
     }
   }, [msgApi, loadStats, loadRecords])
+
+  const handleCopy = useCallback((record: RentRecord) => {
+    addForm.setFieldsValue({
+      msg_time:     record.msg_time ? dayjs(record.msg_time) : null,
+      msg_type:     record.msg_type,
+      order_no:     '',
+      item_name:    record.item_name,
+      wear_level:   record.wear_level,
+      wear_value:   record.wear_value,
+      income:       record.income,
+      lease_days:   record.lease_days,
+      order_status: record.order_status,
+    })
+    setAddModalOpen(true)
+  }, [addForm])
 
   return (
     <div style={{ minHeight: '100vh', background: '#141414', padding: '24px' }}>
@@ -250,6 +269,7 @@ export default function Home() {
           page={page}
           onPage={setPage}
           onDelete={handleDelete}
+          onCopy={handleCopy}
         />
       </div>
 

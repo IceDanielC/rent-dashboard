@@ -146,6 +146,15 @@ export default function TotalCommodityPage() {
   const purchaseLoadedCount = Array.from(purchasePrices.values()).filter(v => v !== 'loading' && v !== null).length
   const purchaseAllLoaded = purchasePrices.size > 0 && purchaseLoadedCount === purchasePrices.size
 
+  // 总盈亏 = sum(市场价 - 购买均价) * 数量
+  const totalProfit = items.reduce((sum, item) => sum + item.profitAndLossPrice * item.assetMergeCount, 0)
+  // 总绝对盈亏 = sum(求购价 - 购买均价) * 数量
+  const totalAbsoluteProfit = items.reduce((sum, item) => {
+    const p = purchasePrices.get(item.templateId)
+    if (typeof p === 'number') return sum + (p - item.assetBuyPrice) * item.assetMergeCount
+    return sum
+  }, 0)
+
   const columns: ProColumns<CommodityItem>[] = [
     {
       title: '饰品名称',
@@ -230,6 +239,49 @@ export default function TotalCommodityPage() {
         return <span style={{ color }}>{val > 0 ? '+' : ''}{val.toFixed(2)}%</span>
       },
     },
+    {
+      title: '绝对盈亏',
+      key: 'absoluteProfit',
+      width: 110,
+      align: 'right',
+      sorter: (a, b) => {
+        const pa = purchasePrices.get(a.templateId)
+        const pb = purchasePrices.get(b.templateId)
+        const va = typeof pa === 'number' ? pa - a.assetBuyPrice : 0
+        const vb = typeof pb === 'number' ? pb - b.assetBuyPrice : 0
+        return va - vb
+      },
+      render: (_, record) => {
+        const price = purchasePrices.get(record.templateId)
+        if (price === 'loading') return <Spin size="small" />
+        if (price == null) return <span style={{ color: 'rgba(255,255,255,0.25)' }}>—</span>
+        const val = price - record.assetBuyPrice
+        const color = val > 0 ? '#52c41a' : val < 0 ? '#ff4d4f' : 'rgba(255,255,255,0.45)'
+        return <span style={{ color, fontWeight: 500 }}>{val > 0 ? '+' : ''}{val.toFixed(2)}</span>
+      },
+    },
+    {
+      title: '绝对盈亏%',
+      key: 'absoluteProfitRange',
+      width: 110,
+      align: 'right',
+      sorter: (a, b) => {
+        const pa = purchasePrices.get(a.templateId)
+        const pb = purchasePrices.get(b.templateId)
+        const va = typeof pa === 'number' && a.assetBuyPrice > 0 ? (pa - a.assetBuyPrice) / a.assetBuyPrice * 100 : 0
+        const vb = typeof pb === 'number' && b.assetBuyPrice > 0 ? (pb - b.assetBuyPrice) / b.assetBuyPrice * 100 : 0
+        return va - vb
+      },
+      render: (_, record) => {
+        const price = purchasePrices.get(record.templateId)
+        if (price === 'loading') return <Spin size="small" />
+        if (price == null) return <span style={{ color: 'rgba(255,255,255,0.25)' }}>—</span>
+        if (record.assetBuyPrice <= 0) return <span style={{ color: 'rgba(255,255,255,0.25)' }}>—</span>
+        const val = (price - record.assetBuyPrice) / record.assetBuyPrice * 100
+        const color = val > 0 ? '#52c41a' : val < 0 ? '#ff4d4f' : 'rgba(255,255,255,0.45)'
+        return <span style={{ color }}>{val > 0 ? '+' : ''}{val.toFixed(2)}%</span>
+      },
+    },
   ]
 
   return (
@@ -300,6 +352,25 @@ export default function TotalCommodityPage() {
               value: totalPurchasePrice.toFixed(2),
               prefix: '¥',
               valueStyle: { color: '#faad14' },
+              description: !purchaseAllLoaded && purchasePrices.size > 0
+                ? <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>加载中…</span>
+                : undefined,
+            }}
+          />
+          <StatisticCard
+            statistic={{
+              title: '总盈亏',
+              value: (totalProfit >= 0 ? '+' : '') + totalProfit.toFixed(2),
+              prefix: '¥',
+              valueStyle: { color: totalProfit > 0 ? '#52c41a' : totalProfit < 0 ? '#ff4d4f' : 'rgba(255,255,255,0.85)' },
+            }}
+          />
+          <StatisticCard
+            statistic={{
+              title: '总绝对盈亏',
+              value: (totalAbsoluteProfit >= 0 ? '+' : '') + totalAbsoluteProfit.toFixed(2),
+              prefix: '¥',
+              valueStyle: { color: totalAbsoluteProfit > 0 ? '#52c41a' : totalAbsoluteProfit < 0 ? '#ff4d4f' : 'rgba(255,255,255,0.85)' },
               description: !purchaseAllLoaded && purchasePrices.size > 0
                 ? <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>加载中…</span>
                 : undefined,

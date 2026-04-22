@@ -84,7 +84,7 @@ export async function GET(): Promise<Response> {
 
     // 2. 过滤目标消息类型
     const targets = messages.filter(m => TARGET_TITLES.has(m.title))
-
+    
     // 3. 准备 insert 语句
     const insert = db.prepare(`
       INSERT OR IGNORE INTO records
@@ -97,22 +97,16 @@ export async function GET(): Promise<Response> {
     for (const msg of targets) {
       const orderId = String(msg.orderNo)
 
-      // 先检查是否已存在
-      const exists = db.prepare('SELECT 1 FROM records WHERE order_no = ?').get(orderId)
-      if (exists) {
-        result.skipped++
-        continue
-      }
-
       // 拉取订单详情
       try {
-        const detailResp = await fetchOrderDetail(orderId) as {
+        type DetailResp = {
           code: number
           data?: {
             orderDetail?: {
               orderNo: string
               orderStatusName: string
               leaseDays: number
+              subletOriginOrderId?: string
               productDetail?: {
                 commodityName: string
                 exteriorName: string
@@ -123,17 +117,46 @@ export async function GET(): Promise<Response> {
           }
         }
 
+        const detailResp = await fetchOrderDetail(orderId) as DetailResp
+
         if (detailResp.code !== 0) {
           result.errors.push(`订单 ${orderId}: code=${detailResp.code}`)
           continue
         }
 
-        const order = detailResp.data?.orderDetail
+        let order = detailResp.data?.orderDetail
+        let leaseInfo = detailResp.data?.leaseAmountInfo
+
+        // 若存在转租原订单，改用原订单的详情（orderNo 和租金以原订单为准）
+        const originOrderId = order?.subletOriginOrderId
+        if (originOrderId) {
+          console.log(`@@current order ${orderId} -> originOrder ${originOrderId}`)
+          // 以原订单号去重
+          const existsByOrigin = db.prepare('SELECT 1 FROM records WHERE order_no = ?').get(originOrderId)
+          if (existsByOrigin) {
+            result.skipped++
+            continue
+          }
+          const originResp = await fetchOrderDetail(originOrderId) as DetailResp
+          if (originResp.code !== 0) {
+            result.errors.push(`原订单 ${originOrderId}: code=${originResp.code}`)
+            continue
+          }
+          order = originResp.data?.orderDetail
+          leaseInfo = originResp.data?.leaseAmountInfo
+        } else {
+          // 无原订单，直接用当前订单号去重
+          const existsCurrent = db.prepare('SELECT 1 FROM records WHERE order_no = ?').get(orderId)
+          if (existsCurrent) {
+            result.skipped++
+            continue
+          }
+        }
+
         const product = order?.productDetail
-        const leaseInfo = detailResp.data?.leaseAmountInfo
 
         if (!order || !product) {
-          result.errors.push(`订单 ${orderId}: 数据结构异常`)
+          result.errors.push(`订单 ${orderId}: 数据结构异常 order=${JSON.stringify(order)} product=${JSON.stringify(product)}`)
           continue
         }
 
@@ -166,7 +189,7 @@ export async function GET(): Promise<Response> {
         result.added++
 
         // 适当延迟，避免请求过快
-        await new Promise(r => setTimeout(r, 200))
+        await new Promise(r => setTimeout(r, 250))
       } catch (e) {
         result.errors.push(`订单 ${orderId}: ${String(e)}`)
       }

@@ -1,8 +1,8 @@
 'use client'
 import { useState, useCallback } from 'react'
 import { ProTable } from '@ant-design/pro-components'
-import { Tag, Popconfirm, Button } from 'antd'
-import { DeleteOutlined } from '@ant-design/icons'
+import { Tag, Popconfirm, Button, Tooltip } from 'antd'
+import { DeleteOutlined, CopyOutlined } from '@ant-design/icons'
 import { Resizable } from 'react-resizable'
 import type { ResizeCallbackData } from 'react-resizable'
 import type { ProColumns } from '@ant-design/pro-components'
@@ -31,12 +31,12 @@ interface Props {
   page: number
   onPage: (p: number) => void
   onDelete: (id: number) => void
+  onCopy: (record: RentRecord) => void
 }
 
-const BASE_COLUMNS: ProColumns<RentRecord>[] = [
+const STATIC_COLUMNS: ProColumns<RentRecord>[] = [
   { title: '时间',     dataIndex: 'msg_time',      sorter: true, width: 150, render: (val) => <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: 12 }}>{val as string}</span> },
   { title: '类型',     dataIndex: 'msg_type',      sorter: true, width: 160, render: (val) => <Tag color={TYPE_COLOR[val as string] ?? 'default'}>{val as string}</Tag> },
-  { title: '饰品名称', dataIndex: 'item_name',     sorter: true, width: 260, ellipsis: true },
   { title: '磨损等级', dataIndex: 'wear_level',    sorter: true, width: 110, render: (val) => <Tag color={WEAR_COLOR[val as string] ?? 'default'}>{val as string}</Tag> },
   { title: '磨损值',   dataIndex: 'wear_value',    sorter: true, width: 110, render: (val) => <span style={{ fontFamily: 'monospace', fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>{(val as number)?.toFixed(6)}</span> },
   { title: '租金(元)', dataIndex: 'income',        sorter: true, width: 100, render: (val) => <span style={{ color: '#52c41a', fontWeight: 500 }}>¥{(val as number)?.toFixed(2)}</span> },
@@ -66,9 +66,41 @@ function ResizableTitle(props: React.HTMLAttributes<HTMLElement> & { onResize: (
   )
 }
 
-export default function RecordsTable({ data, loading, sortKey, sortDir, onSort, page, onPage, onDelete }: Props) {
+export default function RecordsTable({ data, loading, sortKey, sortDir, onSort, page, onPage, onDelete, onCopy }: Props) {
+  const itemNameColumn: ProColumns<RentRecord> = {
+    title: '饰品名称',
+    dataIndex: 'item_name',
+    sorter: true,
+    width: 260,
+    ellipsis: true,
+    render: (val, record) => (
+      <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{val as string}</span>
+        <Tooltip title="复制此条新增">
+          <Button
+            type="text"
+            icon={<CopyOutlined />}
+            size="small"
+            style={{ flexShrink: 0, color: 'rgba(255,255,255,0.35)' }}
+            onClick={e => { e.stopPropagation(); onCopy(record) }}
+          />
+        </Tooltip>
+      </span>
+    ),
+  }
+
+  const BASE_COLUMNS: ProColumns<RentRecord>[] = [
+    STATIC_COLUMNS[0], // 时间
+    STATIC_COLUMNS[1], // 类型
+    itemNameColumn,
+    ...STATIC_COLUMNS.slice(2), // 磨损等级之后
+  ]
+
   const [colWidths, setColWidths] = useState<Record<string, number>>(
-    () => Object.fromEntries(BASE_COLUMNS.map(c => [c.dataIndex as string, c.width as number]))
+    () => ({
+      ...Object.fromEntries(STATIC_COLUMNS.map(c => [c.dataIndex as string, c.width as number])),
+      item_name: 260,
+    })
   )
 
   const handleResize = useCallback((dataIndex: string) => (_: React.SyntheticEvent, { size }: ResizeCallbackData) => {
