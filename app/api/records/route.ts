@@ -45,6 +45,51 @@ export async function POST(req: NextRequest) {
   }
 }
 
+export async function PUT(req: NextRequest) {
+  try {
+    const db = getDb()
+    const body = await req.json()
+    const { id, msg_time, msg_type, item_name, wear_level, wear_value, income, actual_income, lease_days, order_status } = body
+
+    if (!id) {
+      return NextResponse.json({ error: '缺少参数 id' }, { status: 400 })
+    }
+
+    const result = db.prepare(`
+      UPDATE records SET
+        msg_time      = @msg_time,
+        msg_type      = @msg_type,
+        item_name     = @item_name,
+        wear_level    = @wear_level,
+        wear_value    = @wear_value,
+        income        = @income,
+        actual_income = @actual_income,
+        lease_days    = @lease_days,
+        order_status  = @order_status
+      WHERE id = @id
+    `).run({
+      id,
+      msg_time:      msg_time ?? '',
+      msg_type:      msg_type ?? '',
+      item_name:     item_name ?? '',
+      wear_level:    wear_level ?? '',
+      wear_value:    parseFloat(wear_value ?? '0') || 0,
+      income:        parseFloat(income ?? '0') || 0,
+      actual_income: parseFloat(actual_income ?? '0') || 0,
+      lease_days:    parseInt(lease_days ?? '0') || 0,
+      order_status:  order_status ?? '',
+    })
+
+    if (result.changes === 0) {
+      return NextResponse.json({ error: '记录不存在' }, { status: 404 })
+    }
+    return NextResponse.json({ ok: true })
+  } catch (e) {
+    console.error(e)
+    return NextResponse.json({ error: String(e) }, { status: 500 })
+  }
+}
+
 export async function DELETE(req: NextRequest) {
   try {
     const db = getDb()
@@ -77,6 +122,7 @@ export async function GET(req: NextRequest) {
     const dateTo      = p.get('dateTo') || ''
     const msgType     = p.get('msgType') || ''
     const keyword     = p.get('keyword') || ''
+    const orderNo        = p.get('orderNo') || ''
     const wearLevel      = p.get('wearLevel') || ''
     const wearValueMin   = p.get('wearValueMin') || ''
     const wearValueMax   = p.get('wearValueMax') || ''
@@ -93,6 +139,7 @@ export async function GET(req: NextRequest) {
     if (dateTo)   { conditions.push("DATE(msg_time) <= @dateTo");   params.dateTo = dateTo }
     if (msgType)  { conditions.push("msg_type = @msgType");          params.msgType = msgType }
     if (keyword)  { conditions.push("item_name LIKE @keyword");      params.keyword = `%${keyword}%` }
+    if (orderNo)  { conditions.push("order_no LIKE @orderNo");       params.orderNo = `%${orderNo}%` }
     if (orderStatus)   { conditions.push("order_status = @orderStatus");       params.orderStatus = orderStatus }
     if (wearValueMin)  { conditions.push("wear_value >= @wearValueMin");        params.wearValueMin = parseFloat(wearValueMin) }
     if (wearValueMax)  { conditions.push("wear_value <= @wearValueMax");        params.wearValueMax = parseFloat(wearValueMax) }

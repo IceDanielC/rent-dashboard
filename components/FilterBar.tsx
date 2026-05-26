@@ -1,5 +1,5 @@
 'use client'
-import { Form, Select, Input, Button, DatePicker, Checkbox, InputNumber, Space } from 'antd'
+import { Form, Input, Button, DatePicker, Checkbox, InputNumber, Space } from 'antd'
 import { SearchOutlined, ReloadOutlined } from '@ant-design/icons'
 import { ProCard } from '@ant-design/pro-components'
 import dayjs from 'dayjs'
@@ -7,8 +7,8 @@ import dayjs from 'dayjs'
 export interface Filters {
   dateFrom: string
   dateTo: string
-  msgType: string
   keyword: string
+  orderNo: string
   wearLevels: string[]
   wearValueMin: string
   wearValueMax: string
@@ -31,8 +31,8 @@ export default function FilterBar({ filters, onChange, onReset }: Props) {
     onChange({
       dateFrom: dateRange?.[0]?.format('YYYY-MM-DD') ?? '',
       dateTo: dateRange?.[1]?.format('YYYY-MM-DD') ?? '',
-      msgType: (all.msgType as string) ?? '',
       keyword: (all.keyword as string) ?? '',
+      orderNo: (all.orderNo as string) ?? '',
       wearLevels: (all.wearLevels as string[]) ?? [],
       wearValueMin: all.wearValueMin != null ? String(all.wearValueMin) : '',
       wearValueMax: all.wearValueMax != null ? String(all.wearValueMax) : '',
@@ -68,8 +68,8 @@ export default function FilterBar({ filters, onChange, onReset }: Props) {
         onValuesChange={handleValuesChange}
         initialValues={{
           dateRange: dateRangeValue,
-          msgType: filters.msgType || undefined,
           keyword: filters.keyword,
+          orderNo: filters.orderNo,
           wearLevels: filters.wearLevels,
           wearValueMin: filters.wearValueMin ? parseFloat(filters.wearValueMin) : undefined,
           wearValueMax: filters.wearValueMax ? parseFloat(filters.wearValueMax) : undefined,
@@ -82,19 +82,7 @@ export default function FilterBar({ filters, onChange, onReset }: Props) {
             format="YYYY-MM-DD"
             placeholder={['开始日期', '结束日期']}
             allowClear
-            style={{ width: 240 }}
-          />
-        </Form.Item>
-
-        <Form.Item name="msgType" label="消息类型" style={{ marginBottom: 8 }}>
-          <Select
-            placeholder="全部"
-            allowClear
-            style={{ width: 160 }}
-            options={[
-              { label: '转租成功', value: '转租成功' },
-              { label: '自动确认归还成功', value: '自动确认归还成功' },
-            ]}
+            style={{ width: 'min(240px, calc(100vw - 120px))' }}
           />
         </Form.Item>
 
@@ -103,12 +91,21 @@ export default function FilterBar({ filters, onChange, onReset }: Props) {
             prefix={<SearchOutlined style={{ color: 'rgba(255,255,255,0.3)' }} />}
             placeholder="输入关键词"
             allowClear
-            style={{ width: 200 }}
+            style={{ width: 'min(200px, calc(100vw - 100px))' }}
           />
         </Form.Item>
 
-        <Form.Item name="wearLevels" label="磨损等级" style={{ marginBottom: 8 }}>
-          <Checkbox.Group options={WEAR_LEVELS} />
+        <Form.Item name="orderNo" label="订单号" style={{ marginBottom: 8 }}>
+          <Input
+            prefix={<SearchOutlined style={{ color: 'rgba(255,255,255,0.3)' }} />}
+            placeholder="输入订单号"
+            allowClear
+            style={{ width: 'min(200px, calc(100vw - 100px))' }}
+          />
+        </Form.Item>
+
+        <Form.Item name="wearLevels" label="磨损等级" style={{ marginBottom: 8, flexBasis: '100%' }}>
+          <Checkbox.Group options={WEAR_LEVELS} style={{ flexWrap: 'wrap', gap: 4 }} />
         </Form.Item>
 
         <Form.Item label="磨损值范围" style={{ marginBottom: 8 }}>
@@ -120,7 +117,7 @@ export default function FilterBar({ filters, onChange, onReset }: Props) {
                 max={1}
                 step={0.01}
                 precision={6}
-                style={{ width: 120 }}
+                style={{ width: 'min(120px, calc(50vw - 60px))' }}
               />
             </Form.Item>
             <span style={{ padding: '0 8px', lineHeight: '32px', color: 'rgba(255,255,255,0.3)' }}>~</span>
@@ -131,7 +128,7 @@ export default function FilterBar({ filters, onChange, onReset }: Props) {
                 max={1}
                 step={0.01}
                 precision={6}
-                style={{ width: 120 }}
+                style={{ width: 'min(120px, calc(50vw - 60px))' }}
               />
             </Form.Item>
           </Space.Compact>

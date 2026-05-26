@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Typography, Button, Tooltip, message, Badge, Space, Modal, Form, Input, Select, DatePicker, InputNumber } from 'antd'
-import { SyncOutlined, ClockCircleOutlined, PlusOutlined, BarChartOutlined, AppstoreOutlined } from '@ant-design/icons'
+import { SyncOutlined, ClockCircleOutlined, PlusOutlined, BarChartOutlined, AppstoreOutlined, ApartmentOutlined, StarOutlined, KeyOutlined, ShopOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import Link from 'next/link'
 import StatsCards from '@/components/StatsCards'
@@ -11,7 +11,7 @@ import RecordsTable from '@/components/RecordsTable'
 import type { Stats, RecordsResponse, RentRecord } from '@/lib/types'
 
 const DEFAULT_FILTERS: Filters = {
-  dateFrom: '', dateTo: '', msgType: '', keyword: '', wearLevels: [],
+  dateFrom: '', dateTo: '', keyword: '', orderNo: '', wearLevels: [],
   wearValueMin: '', wearValueMax: '', orderStatus: ''
 }
 
@@ -43,6 +43,14 @@ export default function Home() {
   const [addModalOpen, setAddModalOpen] = useState(false)
   const [addSubmitting, setAddSubmitting] = useState(false)
   const [addForm] = Form.useForm()
+  const [chainModalOpen, setChainModalOpen] = useState(false)
+  const [chainOrderId, setChainOrderId] = useState('')
+  const [chainSyncing, setChainSyncing] = useState(false)
+  const [soldWearValues, setSoldWearValues] = useState<Set<string>>(new Set())
+  const [authModalOpen, setAuthModalOpen] = useState(false)
+  const [authToken, setAuthToken] = useState('')
+  const [authCookie, setAuthCookie] = useState('')
+  const [authSubmitting, setAuthSubmitting] = useState(false)
   const [msgApi, contextHolder] = message.useMessage()
 
   const loadStats = useCallback(() => {
@@ -54,9 +62,23 @@ export default function Home() {
     fetch('/api/sync-status').then(r => r.json()).then(setSyncStatus).catch(() => {})
   }, [])
 
+  const loadSoldWearValues = useCallback(() => {
+    fetch('/api/assets').then(r => r.json()).then(data => {
+      if (data.ok) {
+        const set = new Set<string>(
+          data.assets
+            .filter((a: { sell_price: number }) => a.sell_price > 0)
+            .map((a: { wear_value: number }) => a.wear_value.toFixed(6))
+        )
+        setSoldWearValues(set)
+      }
+    }).catch(() => {})
+  }, [])
+
   useEffect(() => {
     loadStats()
     loadSyncStatus()
+    loadSoldWearValues()
     handleSync()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -65,8 +87,8 @@ export default function Home() {
     const params = new URLSearchParams()
     if (filters.dateFrom)          params.set('dateFrom', filters.dateFrom)
     if (filters.dateTo)            params.set('dateTo', filters.dateTo)
-    if (filters.msgType)           params.set('msgType', filters.msgType)
     if (filters.keyword)           params.set('keyword', filters.keyword)
+    if (filters.orderNo)           params.set('orderNo', filters.orderNo)
     if (filters.wearLevels.length) params.set('wearLevel', filters.wearLevels.join(','))
     if (filters.wearValueMin)      params.set('wearValueMin', filters.wearValueMin)
     if (filters.wearValueMax)      params.set('wearValueMax', filters.wearValueMax)
@@ -109,6 +131,34 @@ export default function Home() {
       syncingRef.current = false
     }
   }, [msgApi, loadStats, loadRecords, loadSyncStatus])
+
+  const handleChainSync = useCallback(async () => {
+    const id = chainOrderId.trim()
+    if (!id) { msgApi.warning('请输入订单号'); return }
+    setChainSyncing(true)
+    msgApi.loading({ content: '递归同步中...', key: 'chain', duration: 0 })
+    try {
+      const res = await fetch('/api/sync-chain', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: id }),
+      })
+      const data = await res.json()
+      if (data.ok) {
+        msgApi.success({ content: data.message, key: 'chain', duration: 6 })
+        setChainModalOpen(false)
+        setChainOrderId('')
+        loadStats()
+        loadRecords()
+      } else {
+        msgApi.error({ content: `递归同步失败: ${data.error}`, key: 'chain', duration: 5 })
+      }
+    } catch (e) {
+      msgApi.error({ content: `请求失败: ${String(e)}`, key: 'chain', duration: 5 })
+    } finally {
+      setChainSyncing(false)
+    }
+  }, [chainOrderId, msgApi, loadStats, loadRecords])
 
   function handleFiltersChange(f: Filters) {
     setFilters(f)
@@ -153,6 +203,22 @@ export default function Home() {
     }
   }, [addForm, msgApi, loadStats, loadRecords])
 
+  const handleEdit = useCallback(async (id: number, values: Partial<RentRecord>) => {
+    const res = await fetch('/api/records', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, ...values }),
+    })
+    const data = await res.json()
+    if (data.ok) {
+      msgApi.success('修改成功')
+      loadStats()
+      loadRecords()
+    } else {
+      msgApi.error(data.error ?? '修改失败')
+    }
+  }, [msgApi, loadStats, loadRecords])
+
   const handleDelete = useCallback(async (id: number) => {
     const res = await fetch(`/api/records?id=${id}`, { method: 'DELETE' })
     const data = await res.json()
@@ -164,6 +230,40 @@ export default function Home() {
       msgApi.error(data.error ?? '删除失败')
     }
   }, [msgApi, loadStats, loadRecords])
+
+  const openAuthModal = useCallback(async () => {
+    try {
+      const res = await fetch('/api/auth-config')
+      const data = await res.json()
+      if (data.ok) {
+        setAuthToken(data.token ?? '')
+        setAuthCookie(data.cookie ?? '')
+      }
+    } catch {}
+    setAuthModalOpen(true)
+  }, [])
+
+  const handleAuthSubmit = useCallback(async () => {
+    setAuthSubmitting(true)
+    try {
+      const res = await fetch('/api/auth-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: authToken, cookie: authCookie }),
+      })
+      const data = await res.json()
+      if (data.ok) {
+        msgApi.success('凭证已保存，下次同步生效')
+        setAuthModalOpen(false)
+      } else {
+        msgApi.error(data.error ?? '保存失败')
+      }
+    } catch (e) {
+      msgApi.error(`请求失败: ${String(e)}`)
+    } finally {
+      setAuthSubmitting(false)
+    }
+  }, [authToken, authCookie, msgApi])
 
   const handleCopy = useCallback((record: RentRecord) => {
     addForm.setFieldsValue({
@@ -181,16 +281,16 @@ export default function Home() {
   }, [addForm])
 
   return (
-    <div style={{ minHeight: '100vh', background: '#141414', padding: '24px' }}>
+    <div style={{ minHeight: '100vh', background: '#141414', padding: 'clamp(12px, 3vw, 24px)' }}>
       {contextHolder}
       <div style={{ maxWidth: 1600, margin: '0 auto' }}>
         {/* 顶部标题栏 */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-          <Typography.Title level={4} style={{ margin: 0, color: 'rgba(255,255,255,0.85)' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+          <Typography.Title level={4} style={{ margin: 0, color: 'rgba(255,255,255,0.85)', fontSize: 'clamp(15px, 4vw, 20px)' }}>
             🎮 悠悠有品 · 转租收益记录
           </Typography.Title>
 
-          <Space size={12} align="center">
+          <Space size={6} align="center" wrap>
             {/* 上次同步时间 */}
             {syncStatus.last_sync && (
               <Tooltip title={`上次同步: ${syncStatus.last_sync}${syncStatus.last_added != null ? `，新增 ${syncStatus.last_added} 条` : ''}`}>
@@ -205,7 +305,7 @@ export default function Home() {
             )}
 
             <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-              共 {stats?.total ?? '...'} 条记录
+              共 {stats?.total ?? '...'} 条
             </Typography.Text>
 
             {/* 手动新增按钮 */}
@@ -214,7 +314,7 @@ export default function Home() {
               onClick={() => setAddModalOpen(true)}
               size="small"
             >
-              新增记录
+              新增
             </Button>
 
             {/* 手动同步按钮 */}
@@ -226,20 +326,48 @@ export default function Home() {
                 onClick={handleSync}
                 size="small"
               >
-                同步数据
+                同步
+              </Button>
+            </Tooltip>
+
+            {/* 递归同步按钮 */}
+            <Tooltip title="输入订单号，沿转租链路递归同步所有原始订单">
+              <Button
+                icon={<ApartmentOutlined />}
+                onClick={() => setChainModalOpen(true)}
+                size="small"
+              >
+                递归
+              </Button>
+            </Tooltip>
+
+            {/* 鉴权凭证按钮 */}
+            <Tooltip title="更新登录凭证（Token / Cookie），鉴权失效时使用">
+              <Button
+                icon={<KeyOutlined />}
+                onClick={openAuthModal}
+                size="small"
+              >
+                凭证
               </Button>
             </Tooltip>
           </Space>
         </div>
 
         {/* 导航链接行 */}
-        <div style={{ marginBottom: 20 }}>
-          <Space size={8}>
+        <div style={{ marginBottom: 16 }}>
+          <Space size={8} wrap>
             <Link href="/totalCommodity">
-              <Button icon={<AppstoreOutlined />} size="small">饰品总览</Button>
+              <Button icon={<AppstoreOutlined />} size="small">库存总览</Button>
             </Link>
             <Link href="/revenue">
-              <Button icon={<BarChartOutlined />} size="small">收益统计</Button>
+              <Button icon={<BarChartOutlined />} size="small">出租饰品售出统计</Button>
+            </Link>
+            <Link href="/watchlist">
+              <Button icon={<StarOutlined />} size="small">关注饰品</Button>
+            </Link>
+            <Link href="/merchant-total">
+              <Button icon={<ShopOutlined />} size="small">历史交易总览</Button>
             </Link>
           </Space>
         </div>
@@ -268,7 +396,9 @@ export default function Home() {
           onSort={handleSort}
           page={page}
           onPage={setPage}
+          soldWearValues={soldWearValues}
           onDelete={handleDelete}
+          onEdit={handleEdit}
           onCopy={handleCopy}
         />
       </div>
@@ -282,18 +412,11 @@ export default function Home() {
         confirmLoading={addSubmitting}
         okText="确认新增"
         cancelText="取消"
-        width={520}
+        width="min(520px, 95vw)"
       >
         <Form form={addForm} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item name="msg_time" label="消息时间" rules={[{ required: true, message: '请选择时间' }]}>
             <DatePicker showTime style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="msg_type" label="消息类型" rules={[{ required: true, message: '请选择类型' }]}>
-            <Select options={[
-              { value: '转租成功', label: '转租成功' },
-              { value: '自动确认归还成功', label: '自动确认归还成功' },
-              { value: '对方已续租', label: '对方已续租' },
-            ]} />
           </Form.Item>
           <Form.Item name="order_no" label="订单号" rules={[{ required: true, message: '请输入订单号' }]}>
             <Input placeholder="请输入订单号" />
@@ -323,6 +446,69 @@ export default function Home() {
             <Input placeholder="如：已完成" />
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* 递归同步弹窗 */}
+      <Modal
+        title="递归同步转租链路"
+        open={chainModalOpen}
+        onOk={handleChainSync}
+        onCancel={() => { setChainModalOpen(false); setChainOrderId('') }}
+        confirmLoading={chainSyncing}
+        okText="开始同步"
+        cancelText="取消"
+        width="min(420px, 95vw)"
+      >
+        <div style={{ marginTop: 16 }}>
+          <div style={{ marginBottom: 8, color: 'rgba(255,255,255,0.45)', fontSize: 12 }}>
+            从输入的订单号开始，沿 subletOriginOrderId 链路递归查询并覆盖/新增数据库记录，直到无原始订单为止。
+          </div>
+          <Input
+            placeholder="请输入起始订单号"
+            value={chainOrderId}
+            onChange={e => setChainOrderId(e.target.value)}
+            onPressEnter={handleChainSync}
+            autoFocus
+          />
+        </div>
+      </Modal>
+
+      {/* 鉴权凭证弹窗 */}
+      <Modal
+        title="更新登录凭证"
+        open={authModalOpen}
+        onOk={handleAuthSubmit}
+        onCancel={() => setAuthModalOpen(false)}
+        confirmLoading={authSubmitting}
+        okText="保存"
+        cancelText="取消"
+        width="min(520px, 95vw)"
+      >
+        <div style={{ marginTop: 16 }}>
+          <div style={{ marginBottom: 12, color: 'rgba(255,255,255,0.45)', fontSize: 12 }}>
+            登录凭证过期时在此更新，保存后立即对后续同步请求生效。
+          </div>
+          <Form layout="vertical">
+            <Form.Item label="Authorization Token" style={{ marginBottom: 12 }}>
+              <Input.TextArea
+                rows={3}
+                placeholder="Bearer eyJ..."
+                value={authToken}
+                onChange={e => setAuthToken(e.target.value)}
+                style={{ fontFamily: 'monospace', fontSize: 12 }}
+              />
+            </Form.Item>
+            <Form.Item label="Cookie" style={{ marginBottom: 0 }}>
+              <Input.TextArea
+                rows={3}
+                placeholder="可选，有需要时填写"
+                value={authCookie}
+                onChange={e => setAuthCookie(e.target.value)}
+                style={{ fontFamily: 'monospace', fontSize: 12 }}
+              />
+            </Form.Item>
+          </Form>
+        </div>
       </Modal>
     </div>
   )

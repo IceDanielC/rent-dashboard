@@ -1,10 +1,16 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import AntdProvider from "./AntdProvider";
 
 export const metadata: Metadata = {
   title: "转租收益记录",
   description: "悠悠有品转租收益可视化",
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
 };
 
 export default function RootLayout({

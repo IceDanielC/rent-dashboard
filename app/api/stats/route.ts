@@ -11,6 +11,12 @@ export async function GET() {
       total: number; ti: number; ta: number; ai: number
     }
 
+    const todayRow = db.prepare(`
+      SELECT SUM(actual_income) as today_actual
+      FROM records
+      WHERE DATE(msg_time) = DATE('now', 'localtime')
+    `).get() as { today_actual: number }
+
     const trend = db.prepare(`
       SELECT DATE(msg_time) as date, SUM(income) as income, SUM(actual_income) as actual_income, COUNT(*) as count
       FROM records
@@ -37,6 +43,7 @@ export async function GET() {
       total_income: base.ti ?? 0,
       total_actual: base.ta ?? 0,
       avg_income: base.ai ?? 0,
+      today_actual: todayRow.today_actual ?? 0,
       trend,
       wear_dist,
       type_dist,

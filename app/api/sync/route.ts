@@ -3,7 +3,12 @@ export const dynamic = 'force-dynamic'
 import { getDb } from '@/lib/db'
 import { getApiHeaders } from '@/lib/api-headers'
 
-const TARGET_TITLES = new Set(['转租成功', '自动确认归还成功', '对方已续租'])
+const TARGET_TITLES = new Set(['转租成功', '自动确认归还成功'])
+
+// 把 JSON 字符串中超过 JS 安全整数范围的大数字转为字符串，避免精度丢失
+function safeJsonParse(text: string): unknown {
+  return JSON.parse(text.replace(/:\s*(\d{16,})/g, ': "$1"'))
+}
 
 // 解压 gzip（Node.js fetch 会自动解压，但保留手动兜底）
 async function decompressResponse(res: Response): Promise<unknown> {
@@ -14,9 +19,9 @@ async function decompressResponse(res: Response): Promise<unknown> {
   if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
     const { gunzipSync } = await import('zlib')
     const decompressed = gunzipSync(Buffer.from(bytes))
-    return JSON.parse(decompressed.toString('utf-8'))
+    return safeJsonParse(decompressed.toString('utf-8'))
   }
-  return JSON.parse(Buffer.from(bytes).toString('utf-8'))
+  return safeJsonParse(Buffer.from(bytes).toString('utf-8'))
 }
 
 async function fetchMessageList(pageIndex = 1, pageSize = 500): Promise<unknown> {
@@ -36,20 +41,32 @@ async function fetchMessageList(pageIndex = 1, pageSize = 500): Promise<unknown>
   return decompressResponse(res)
 }
 
-async function fetchOrderDetail(orderId: string): Promise<unknown> {
+async function fetchOrderDetail(orderId: string, maxRetries = 3): Promise<unknown> {
   const headers = getApiHeaders()
-  const res = await fetch('https://api.youpin898.com/api/youpin/bff/order/v2/detail', {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      AppType: '3',
-      Platform: 'ios',
-      orderId,
-      Version: '5.43.0',
-      SessionId: headers['DeviceToken'],
-    }),
-  })
-  return decompressResponse(res)
+  let lastError: unknown
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    if (attempt > 0) {
+      await new Promise(r => setTimeout(r, 1500 * Math.pow(2, attempt - 1)))
+    }
+    try {
+      const res = await fetch('https://api.youpin898.com/api/youpin/bff/order/v2/detail', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          AppType: '3',
+          Platform: 'ios',
+          orderId,
+          Version: '5.43.0',
+          SessionId: headers['DeviceToken'],
+        }),
+      })
+      return await decompressResponse(res)
+    } catch (e) {
+      lastError = e
+      console.warn(`[sync] 订单 ${orderId} 第 ${attempt + 1} 次请求失败:`, e)
+    }
+  }
+  throw lastError
 }
 
 interface SyncResult {
@@ -113,7 +130,7 @@ export async function GET(): Promise<Response> {
                 abrade: string
               }
             }
-            leaseAmountInfo?: { firstLeaseAmount: number }
+            leaseAmountInfo?: { firstLeaseAmount: number; totalLeaseAmountDesc?: string }
           }
         }
 
@@ -127,8 +144,10 @@ export async function GET(): Promise<Response> {
         let order = detailResp.data?.orderDetail
         let leaseInfo = detailResp.data?.leaseAmountInfo
 
-        // 若存在转租原订单，改用原订单的详情（orderNo 和租金以原订单为准）
-        const originOrderId = order?.subletOriginOrderId
+        // 归还类消息直接用当前订单落库，不追溯原订单
+        const isReturn = msg.title === '自动确认归还成功'
+        const originOrderId = !isReturn ? order?.subletOriginOrderId : undefined
+
         if (originOrderId) {
           console.log(`@@current order ${orderId} -> originOrder ${originOrderId}`)
           // 以原订单号去重
@@ -145,7 +164,7 @@ export async function GET(): Promise<Response> {
           order = originResp.data?.orderDetail
           leaseInfo = originResp.data?.leaseAmountInfo
         } else {
-          // 无原订单，直接用当前订单号去重
+          // 归还订单或无原订单，直接用当前订单号去重
           const existsCurrent = db.prepare('SELECT 1 FROM records WHERE order_no = ?').get(orderId)
           if (existsCurrent) {
             result.skipped++
@@ -160,7 +179,10 @@ export async function GET(): Promise<Response> {
           continue
         }
 
-        const income = (leaseInfo?.firstLeaseAmount ?? 0) / 100
+        const totalDesc = leaseInfo?.totalLeaseAmountDesc
+        const income = totalDesc
+          ? parseFloat(totalDesc.replace(/[^\d.]/g, '')) || 0
+          : (leaseInfo?.firstLeaseAmount ?? 0) / 100
         const wearValue = parseFloat(product.abrade ?? '0') || 0
 
         // 消息时间格式化（createTime 是毫秒时间戳字符串，转为北京时间 UTC+8）

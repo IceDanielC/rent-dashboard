@@ -47,11 +47,73 @@ function initDb(db: Database.Database) {
       sell_price  REAL NOT NULL DEFAULT 0
     );
   `)
-  // 兼容旧数据库：若 sell_price 列不存在则补加
+  // 兼容旧数据库：若列不存在则补加
   const cols = db.prepare("PRAGMA table_info(assets)").all() as { name: string }[]
   if (!cols.some(c => c.name === 'sell_price')) {
     db.exec('ALTER TABLE assets ADD COLUMN sell_price REAL NOT NULL DEFAULT 0')
   }
+  if (!cols.some(c => c.name === 'sell_time')) {
+    db.exec(`ALTER TABLE assets ADD COLUMN sell_time TEXT NOT NULL DEFAULT '${new Date().toISOString().slice(0, 10)}'`)
+  }
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS watchlist (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      item_name     TEXT NOT NULL,
+      wear          TEXT NOT NULL DEFAULT '',
+      watch_price   REAL NOT NULL DEFAULT 0,
+      watch_rent    REAL NOT NULL DEFAULT 0,
+      template_id   INTEGER,
+      created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+  `)
+  // 兼容旧数据库：补加 hash_name 列
+  const wlCols = db.prepare("PRAGMA table_info(watchlist)").all() as { name: string }[]
+  if (!wlCols.some(c => c.name === 'hash_name')) {
+    db.exec("ALTER TABLE watchlist ADD COLUMN hash_name TEXT NOT NULL DEFAULT ''")
+  }
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS buy_orders (
+      id                INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_no          TEXT UNIQUE NOT NULL,
+      commodity_name    TEXT NOT NULL DEFAULT '',
+      exterior_name     TEXT NOT NULL DEFAULT '',
+      abrade            TEXT NOT NULL DEFAULT '',
+      icon_url          TEXT NOT NULL DEFAULT '',
+      type_name         TEXT NOT NULL DEFAULT '',
+      rarity_name       TEXT NOT NULL DEFAULT '',
+      rarity_color      TEXT NOT NULL DEFAULT '',
+      total_amount      INTEGER NOT NULL DEFAULT 0,
+      finish_order_time INTEGER,
+      create_order_time INTEGER,
+      seller_user_name  TEXT NOT NULL DEFAULT '',
+      synced_at         TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_buy_orders_name   ON buy_orders(commodity_name);
+    CREATE INDEX IF NOT EXISTS idx_buy_orders_abrade ON buy_orders(abrade);
+  `)
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sell_manual_prices (
+      order_no   TEXT PRIMARY KEY,
+      buy_price  REAL NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+  `)
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sell_manual_orders (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      commodity_name TEXT NOT NULL,
+      exterior_name  TEXT NOT NULL DEFAULT '',
+      abrade         TEXT NOT NULL DEFAULT '',
+      sell_price_fen INTEGER NOT NULL,
+      buy_price_fen  INTEGER NOT NULL DEFAULT 0,
+      finish_time    INTEGER NOT NULL,
+      created_at     TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+  `)
 
   // 检查是否已有数据
   const count = (db.prepare('SELECT COUNT(*) as c FROM records').get() as { c: number }).c

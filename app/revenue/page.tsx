@@ -4,7 +4,7 @@ import {
   Typography, Button, Space, Modal, Form, Input,
   InputNumber, DatePicker, Popconfirm, message,
 } from 'antd'
-import { PlusOutlined, DeleteOutlined, ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons'
+import { PlusOutlined, DeleteOutlined, EditOutlined, ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons'
 import { ProTable, StatisticCard } from '@ant-design/pro-components'
 import type { ProColumns } from '@ant-design/pro-components'
 import Link from 'next/link'
@@ -15,6 +15,7 @@ interface Asset {
   item_name: string
   wear_value: number
   buy_time: string
+  sell_time: string
   buy_price: number
   sell_price: number
   rent_income: number
@@ -24,6 +25,7 @@ export default function RevenuePage() {
   const [assets, setAssets] = useState<Asset[]>([])
   const [loading, setLoading] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
+  const [editingAsset, setEditingAsset] = useState<Asset | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [form] = Form.useForm()
   const [msgApi, contextHolder] = message.useMessage()
@@ -49,28 +51,63 @@ export default function RevenuePage() {
       const payload = {
         ...values,
         buy_time: dayjs(values.buy_time).format('YYYY-MM-DD'),
+        sell_time: values.sell_time ? dayjs(values.sell_time).format('YYYY-MM-DD') : undefined,
         wear_value: values.wear_value ?? 0,
       }
-      const res = await fetch('/api/assets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      const data = await res.json()
-      if (data.ok) {
-        msgApi.success('添加成功')
-        setModalOpen(false)
-        form.resetFields()
-        loadAssets()
+
+      if (editingAsset) {
+        // 编辑模式
+        const res = await fetch('/api/assets', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...payload, id: editingAsset.id }),
+        })
+        const data = await res.json()
+        if (data.ok) {
+          msgApi.success('修改成功')
+          setModalOpen(false)
+          setEditingAsset(null)
+          form.resetFields()
+          loadAssets()
+        } else {
+          msgApi.error(data.error ?? '修改失败')
+        }
       } else {
-        msgApi.error(data.error ?? '添加失败')
+        // 新增模式
+        const res = await fetch('/api/assets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        const data = await res.json()
+        if (data.ok) {
+          msgApi.success('添加成功')
+          setModalOpen(false)
+          form.resetFields()
+          loadAssets()
+        } else {
+          msgApi.error(data.error ?? '添加失败')
+        }
       }
     } catch {
       // validateFields 失败
     } finally {
       setSubmitting(false)
     }
-  }, [form, msgApi, loadAssets])
+  }, [form, msgApi, loadAssets, editingAsset])
+
+  const handleEdit = useCallback((record: Asset) => {
+    setEditingAsset(record)
+    form.setFieldsValue({
+      item_name: record.item_name,
+      wear_value: record.wear_value,
+      buy_time: record.buy_time ? dayjs(record.buy_time) : null,
+      sell_time: record.sell_time ? dayjs(record.sell_time) : null,
+      buy_price: record.buy_price,
+      sell_price: record.sell_price,
+    })
+    setModalOpen(true)
+  }, [form])
 
   const handleDelete = useCallback(async (id: number) => {
     const res = await fetch(`/api/assets?id=${id}`, { method: 'DELETE' })
@@ -115,6 +152,15 @@ export default function RevenuePage() {
       sorter: (a, b) => a.buy_time.localeCompare(b.buy_time),
       render: (_, r) => (
         <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: 12 }}>{r.buy_time}</span>
+      ),
+    },
+    {
+      title: '出售时间',
+      dataIndex: 'sell_time',
+      width: 120,
+      sorter: (a, b) => a.sell_time.localeCompare(b.sell_time),
+      render: (_, r) => (
+        <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: 12 }}>{r.sell_time}</span>
       ),
     },
     {
@@ -179,31 +225,62 @@ export default function RevenuePage() {
       },
     },
     {
+      title: '持有总年化',
+      key: 'annualized',
+      width: 120,
+      align: 'right',
+      sorter: (a, b) => {
+        const calcDays = (r: Asset) => Math.max(1, (new Date(r.sell_time).getTime() - new Date(r.buy_time).getTime()) / 86400000)
+        const calcRate = (r: Asset) => r.buy_price > 0 ? (r.sell_price + r.rent_income - r.buy_price) / r.buy_price / calcDays(r) * 365 * 100 : 0
+        return calcRate(a) - calcRate(b)
+      },
+      render: (_, r) => {
+        if (r.buy_price <= 0) return <span style={{ color: 'rgba(255,255,255,0.25)' }}>—</span>
+        const days = Math.max(1, (new Date(r.sell_time).getTime() - new Date(r.buy_time).getTime()) / 86400000)
+        const val = (r.sell_price + r.rent_income - r.buy_price) / r.buy_price / days * 365 * 100
+        const color = val > 0 ? '#52c41a' : val < 0 ? '#ff4d4f' : 'rgba(255,255,255,0.45)'
+        return (
+          <span style={{ color, fontWeight: 500 }}>
+            {val > 0 ? '+' : ''}{val.toFixed(2)}%
+          </span>
+        )
+      },
+    },
+    {
       title: '操作',
       dataIndex: 'action',
-      width: 70,
+      width: 100,
       fixed: 'right',
       render: (_, r) => (
-        <Popconfirm
-          title="确认删除这条记录？"
-          onConfirm={() => handleDelete(r.id)}
-          okText="删除"
-          cancelText="取消"
-          okButtonProps={{ danger: true }}
-        >
-          <Button type="text" danger icon={<DeleteOutlined />} size="small" />
-        </Popconfirm>
+        <Space size={4}>
+          <Button
+            type="text"
+            icon={<EditOutlined />}
+            size="small"
+            style={{ color: 'rgba(255,255,255,0.45)' }}
+            onClick={() => handleEdit(r)}
+          />
+          <Popconfirm
+            title="确认删除这条记录？"
+            onConfirm={() => handleDelete(r.id)}
+            okText="删除"
+            cancelText="取消"
+            okButtonProps={{ danger: true }}
+          >
+            <Button type="text" danger icon={<DeleteOutlined />} size="small" />
+          </Popconfirm>
+        </Space>
       ),
     },
   ]
 
   return (
-    <div style={{ minHeight: '100vh', background: '#141414', padding: '24px' }}>
+    <div style={{ minHeight: '100vh', background: '#141414', padding: 'clamp(12px, 3vw, 24px)' }}>
       {contextHolder}
       <div style={{ maxWidth: 1400, margin: '0 auto' }}>
 
         {/* 顶部标题栏 */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
           <Space size={12} align="center">
             <Link href="/">
               <Button type="text" icon={<ArrowLeftOutlined />} size="small" style={{ color: 'rgba(255,255,255,0.45)' }} />
@@ -297,16 +374,16 @@ export default function RevenuePage() {
         />
       </div>
 
-      {/* 新增弹窗 */}
+      {/* 新增/编辑弹窗 */}
       <Modal
-        title="添加饰品"
+        title={editingAsset ? '编辑饰品' : '添加饰品'}
         open={modalOpen}
         onOk={handleSubmit}
-        onCancel={() => { setModalOpen(false); form.resetFields() }}
+        onCancel={() => { setModalOpen(false); setEditingAsset(null); form.resetFields() }}
         confirmLoading={submitting}
-        okText="确认添加"
+        okText={editingAsset ? '保存修改' : '确认添加'}
         cancelText="取消"
-        width={460}
+        width="min(460px, 95vw)"
       >
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item name="item_name" label="饰品名称" rules={[{ required: true, message: '请输入饰品名称' }]}>
@@ -333,6 +410,9 @@ export default function RevenuePage() {
           </Form.Item>
           <Form.Item name="sell_price" label="出售金额" tooltip="未出售可留空，默认为 0">
             <InputNumber min={0} step={0.01} style={{ width: '100%' }} placeholder="0.00" prefix="¥" />
+          </Form.Item>
+          <Form.Item name="sell_time" label="出售时间" tooltip="未出售可留空，默认填充为今天">
+            <DatePicker style={{ width: '100%' }} />
           </Form.Item>
         </Form>
       </Modal>
