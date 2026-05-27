@@ -6,14 +6,13 @@ import type { Stats } from '@/lib/types'
 interface Props {
   stats: Stats | null
   loading: boolean
-  filteredIncome: number
   filteredActual: number
   filteredCount: number
 }
 
 const cardStyle = { flex: '1 1 160px', minWidth: 0 }
 
-export default function StatsCards({ stats, loading, filteredIncome, filteredActual, filteredCount }: Props) {
+export default function StatsCards({ stats, loading, filteredActual, filteredCount }: Props) {
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
       <div style={cardStyle}>
@@ -32,11 +31,11 @@ export default function StatsCards({ stats, loading, filteredIncome, filteredAct
         <StatisticCard
           loading={loading}
           statistic={{
-            title: '总租金收入',
-            value: stats?.total_income?.toFixed(2) ?? '0.00',
+            title: '近30日到手租金总收入',
+            value: (stats?.recent_30d_actual ?? 0).toFixed(2),
             prefix: '¥',
             valueStyle: { color: '#52c41a' },
-            description: <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: 12 }}>筛选后 ¥{filteredIncome.toFixed(2)}</span>,
+            description: <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: 12 }}>近30日实际到手合计</span>,
             icon: <RiseOutlined style={{ color: '#52c41a', fontSize: 28, background: 'rgba(82,196,26,0.1)', padding: 8, borderRadius: 8 }} />,
           }}
         />

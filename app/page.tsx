@@ -375,7 +375,6 @@ export default function Home() {
         <StatsCards
           stats={stats}
           loading={statsLoading}
-          filteredIncome={records?.filteredIncome ?? 0}
           filteredActual={records?.filteredActual ?? 0}
           filteredCount={records?.total ?? 0}
         />

@@ -18,6 +18,7 @@ export interface Stats {
   total_actual: number
   avg_income: number
   today_actual: number
+  recent_30d_actual: number
   trend: TrendItem[]
   wear_dist: WearItem[]
   type_dist: TypeItem[]
