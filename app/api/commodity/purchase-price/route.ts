@@ -32,6 +32,8 @@ export async function GET(req: NextRequest) {
           Version: '5.43.0',
           SessionId: headers['DeviceToken'],
           templateId,
+          // 多普勒模版不限
+          typeId: '-1',
           pageIndex: 1,
           pageSize: 50,
           showMaxPriceFlag: false,
