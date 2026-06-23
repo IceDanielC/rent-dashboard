@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Typography, Button, Tooltip, message, Badge, Space, Modal, Form, Input, Select, DatePicker, InputNumber } from 'antd'
-import { SyncOutlined, ClockCircleOutlined, PlusOutlined, BarChartOutlined, AppstoreOutlined, ApartmentOutlined, StarOutlined, KeyOutlined, ShopOutlined } from '@ant-design/icons'
+import { SyncOutlined, ClockCircleOutlined, BarChartOutlined, AppstoreOutlined, ApartmentOutlined, StarOutlined, KeyOutlined, ShopOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import Link from 'next/link'
 import StatsCards from '@/components/StatsCards'
@@ -245,6 +245,12 @@ export default function Home() {
           key: 'setLeasePrice',
           duration: 6,
         })
+        if (data.priceChangeResult != null) {
+          const priceChangeResultText = typeof data.priceChangeResult === 'string'
+            ? data.priceChangeResult
+            : JSON.stringify(data.priceChangeResult)
+          msgApi.info({ content: `改价结果：${priceChangeResultText}`, duration: 8 })
+        }
         if (Array.isArray(data.errors) && data.errors.length > 0) {
           msgApi.warning({
             content: `有 ${data.errors.length} 个商品处理失败：${data.errors.slice(0, 2).join('；')}`,

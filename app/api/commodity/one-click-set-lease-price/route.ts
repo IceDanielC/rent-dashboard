@@ -5,6 +5,7 @@ import { getApiHeaders } from '@/lib/api-headers'
 const VERSION = '5.45.0'
 const GAME_ID = 730
 const SOON_DUE_URL = 'https://api.youpin898.com/api/youpin/bff/new/commodity/v1/commodity/zero/cd/soon/due/list'
+const ZERO_CD_LEASE_URL = 'https://api.youpin898.com/api/youpin/bff/new/commodity/v1/commodity/list/zeroCDLease'
 const LEASE_LIST_URL = 'https://api.youpin898.com/api/homepage/v3/detail/commodity/list/lease'
 const PRICE_CHANGE_URL = 'https://api.youpin898.com/api/commodity/Commodity/PriceChangeWithLeaseV2'
 
@@ -50,7 +51,7 @@ function isYoupinOk(json: unknown): json is { code?: number; Code?: number; msg?
     return false
   }
   const data = json as { code?: unknown; Code?: unknown }
-  return data.code === 0 || data.Code === 0
+  return data.code === 0 || data.Code === 0 || data.code === 9004001 || data.Code === 9004001
 }
 
 async function postYoupin(
@@ -72,7 +73,7 @@ async function postYoupin(
     throw new Error(`${endpointName} HTTP ${res.status}`)
   }
   if (!isYoupinOk(json)) {
-    const data = json as { code?: unknown; Code?: unknown; msg?: unknown; Msg?: unknown; message?: unknown }
+    const data = json as { code?: unknown; Code?: unknown; msg?: unknown; Msg?: unknown; message?: unknown } | null
     const code = data?.code ?? data?.Code ?? 'unknown'
     const message = data?.msg ?? data?.Msg ?? data?.message ?? ''
     throw new Error(`${endpointName} code=${String(code)} ${String(message)}`.trim())
@@ -132,6 +133,16 @@ function buildCommodityPayload(item: PreparedItem) {
   }
 }
 
+function getCommodityInfoList(json: {
+  data?: { commodityInfoList?: SoonDueItem[] }
+  Data?: { commodityInfoList?: SoonDueItem[]; CommodityInfoList?: SoonDueItem[] }
+}): SoonDueItem[] {
+  return json.data?.commodityInfoList
+    ?? json.Data?.commodityInfoList
+    ?? json.Data?.CommodityInfoList
+    ?? []
+}
+
 export async function POST(): Promise<Response> {
   const result: {
     total: number
@@ -150,10 +161,14 @@ export async function POST(): Promise<Response> {
       data?: { commodityInfoList?: SoonDueItem[] }
       Data?: { commodityInfoList?: SoonDueItem[]; CommodityInfoList?: SoonDueItem[] }
     }
-    const commodities = soonDueJson.data?.commodityInfoList
-      ?? soonDueJson.Data?.commodityInfoList
-      ?? soonDueJson.Data?.CommodityInfoList
-      ?? []
+    const zeroCdLeaseJson = await postYoupin(ZERO_CD_LEASE_URL, commonBody, 'zeroCdLeaseList') as {
+      data?: { commodityInfoList?: SoonDueItem[] }
+      Data?: { commodityInfoList?: SoonDueItem[]; CommodityInfoList?: SoonDueItem[] }
+    }
+    const commodities = [
+      ...getCommodityInfoList(soonDueJson || {}),
+      ...getCommodityInfoList(zeroCdLeaseJson || {}),
+    ]
     result.total = commodities.length
 
     for (const commodity of commodities) {
@@ -221,20 +236,34 @@ export async function POST(): Promise<Response> {
       })
     }
 
-    await postYoupin(PRICE_CHANGE_URL, {
+    console.log('@@result.items', JSON.stringify({
       Commoditys: result.items.map(buildCommodityPayload),
       Version: VERSION,
       Platform: 'ios',
       GameID: String(GAME_ID),
       AppType: '3',
       SessionId: headers['DeviceToken'],
-    }, 'priceChangeWithLeaseV2', 'PUT')
+    }))
+
+    const priceChangeJson = await postYoupin(PRICE_CHANGE_URL, {
+      Commoditys: result.items.map(buildCommodityPayload),
+      Version: VERSION,
+      Platform: 'ios',
+      GameID: String(GAME_ID),
+      AppType: '3',
+      SessionId: headers['DeviceToken'],
+    }, 'priceChangeWithLeaseV2', 'PUT') as {
+      data?: { Commoditys?: unknown }
+      Data?: { Commoditys?: unknown }
+    }
+    const priceChangeResult = priceChangeJson.Data?.Commoditys ?? priceChangeJson.data?.Commoditys
 
     result.submitted = result.items.length
 
     return NextResponse.json({
       ok: true,
       ...result,
+      priceChangeResult,
       message: `设置完成：提交 ${result.submitted} 个，跳过 ${result.skipped} 个`,
     })
   } catch (e) {
