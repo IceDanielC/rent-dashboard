@@ -51,6 +51,7 @@ export default function Home() {
   const [authToken, setAuthToken] = useState('')
   const [authCookie, setAuthCookie] = useState('')
   const [authSubmitting, setAuthSubmitting] = useState(false)
+  const [settingLeasePrices, setSettingLeasePrices] = useState(false)
   const [msgApi, contextHolder] = message.useMessage()
 
   const loadStats = useCallback(() => {
@@ -231,6 +232,35 @@ export default function Home() {
     }
   }, [msgApi, loadStats, loadRecords])
 
+  const handleOneClickSetLeasePrice = useCallback(async () => {
+    if (settingLeasePrices) return
+    setSettingLeasePrices(true)
+    msgApi.loading({ content: '正在设置转租价格...', key: 'setLeasePrice', duration: 0 })
+    try {
+      const res = await fetch('/api/commodity/one-click-set-lease-price', { method: 'POST' })
+      const data = await res.json()
+      if (data.ok) {
+        msgApi.success({
+          content: data.message ?? `设置完成：提交 ${data.submitted ?? 0} 个，跳过 ${data.skipped ?? 0} 个`,
+          key: 'setLeasePrice',
+          duration: 6,
+        })
+        if (Array.isArray(data.errors) && data.errors.length > 0) {
+          msgApi.warning({
+            content: `有 ${data.errors.length} 个商品处理失败：${data.errors.slice(0, 2).join('；')}`,
+            duration: 8,
+          })
+        }
+      } else {
+        msgApi.error({ content: `设置失败: ${data.error ?? '未知错误'}`, key: 'setLeasePrice', duration: 6 })
+      }
+    } catch (e) {
+      msgApi.error({ content: `请求失败: ${String(e)}`, key: 'setLeasePrice', duration: 6 })
+    } finally {
+      setSettingLeasePrices(false)
+    }
+  }, [settingLeasePrices, msgApi])
+
   const openAuthModal = useCallback(async () => {
     try {
       const res = await fetch('/api/auth-config')
@@ -308,14 +338,14 @@ export default function Home() {
               共 {stats?.total ?? '...'} 条
             </Typography.Text>
 
-            {/* 手动新增按钮 */}
+            {/* 手动新增按钮
             <Button
               icon={<PlusOutlined />}
               onClick={() => setAddModalOpen(true)}
               size="small"
             >
               新增
-            </Button>
+            </Button> */}
 
             {/* 手动同步按钮 */}
             <Tooltip title="从悠悠有品拉取最新消息，自动写入数据库">
@@ -327,6 +357,19 @@ export default function Home() {
                 size="small"
               >
                 同步
+              </Button>
+            </Tooltip>
+
+            {/* 一键设置转租价格按钮 */}
+            <Tooltip title="获取即将到期转租商品，按市场最低租赁价批量设置转租价格">
+              <Button
+                loading={settingLeasePrices}
+                disabled={settingLeasePrices}
+                onClick={handleOneClickSetLeasePrice}
+                size="small"
+                style={{ backgroundColor: '#fa8c16', borderColor: '#fa8c16', color: '#fff' }}
+              >
+                一件设置转租价格
               </Button>
             </Tooltip>
 
