@@ -1,0 +1,40 @@
+name: One Click Set Lease Price
+
+on:
+  schedule:
+    # 每 2 小时执行一次。GitHub Actions 的 cron 使用 UTC 时间。
+    - cron: "0 */2 * * *"
+  # 允许在 GitHub Actions 页面手动触发
+  workflow_dispatch:
+
+concurrency:
+  group: one-click-set-lease-price
+  cancel-in-progress: false
+
+jobs:
+  request-one-click-set-lease-price:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Request one-click set lease price API
+        env:
+          RENT_DASHBOARD_URL: ${{ secrets.RENT_DASHBOARD_URL }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${RENT_DASHBOARD_URL}" ]; then
+            echo "Missing secret: RENT_DASHBOARD_URL"
+            exit 1
+          fi
+
+          echo "Requesting ${RENT_DASHBOARD_URL}/api/commodity/one-click-set-lease-price"
+
+          curl --fail --show-error --silent \
+            --request POST \
+            --connect-timeout 20 \
+            --max-time 600 \
+            --retry 2 \
+            --retry-delay 10 \
+            --header "Content-Type: application/json" \
+            "${RENT_DASHBOARD_URL}/api/commodity/one-click-set-lease-price"
