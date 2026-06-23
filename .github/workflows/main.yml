@@ -20,17 +20,11 @@ jobs:
       - name: Request one-click set lease price API
         env:
           RENT_DASHBOARD_URL: ${{ secrets.RENT_DASHBOARD_URL }}
-          ONE_CLICK_SET_PRICE_SECRET: ${{ secrets.ONE_CLICK_SET_PRICE_SECRET }}
         run: |
           set -euo pipefail
 
           if [ -z "${RENT_DASHBOARD_URL}" ]; then
             echo "Missing secret: RENT_DASHBOARD_URL"
-            exit 1
-          fi
-
-          if [ -z "${ONE_CLICK_SET_PRICE_SECRET}" ]; then
-            echo "Missing secret: ONE_CLICK_SET_PRICE_SECRET"
             exit 1
           fi
 
