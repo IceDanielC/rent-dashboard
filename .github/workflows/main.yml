@@ -2,8 +2,8 @@ name: One Click Set Lease Price
 
 on:
   schedule:
-    # 每 10 min执行一次。GitHub Actions 的 cron 使用 UTC 时间。
-    - cron: "*/10 * * * *"
+    # 每 20 分钟执行一次。GitHub Actions 的 cron 使用 UTC 时间。
+    - cron: "*/20 * * * *"
   # 允许在 GitHub Actions 页面手动触发
   workflow_dispatch:
 
