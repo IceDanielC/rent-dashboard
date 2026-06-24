@@ -7,6 +7,8 @@ const GAME_ID = 730
 const SOON_DUE_URL = 'https://api.youpin898.com/api/youpin/bff/new/commodity/v1/commodity/zero/cd/soon/due/list'
 const ZERO_CD_LEASE_URL = 'https://api.youpin898.com/api/youpin/bff/new/commodity/v1/commodity/list/zeroCDLease'
 const LEASE_LIST_URL = 'https://api.youpin898.com/api/homepage/v3/detail/commodity/list/lease'
+const INVENTORY_UPLOAD_INIT_URL = 'https://api.youpin898.com/api/youpin/commodity/inventory/v1/upload/init'
+const CHANGE_PRICE_INIT_INFO_URL = 'https://api.youpin898.com/api/youpin/bff/new/commodity/commodity/change/price/v3/init/info'
 const PRICE_CHANGE_URL = 'https://api.youpin898.com/api/commodity/Commodity/PriceChangeWithLeaseV2'
 
 function safeJsonParse(text: string): unknown {
@@ -85,6 +87,7 @@ interface SoonDueItem {
   id?: string | number
   templateId?: string | number
   referencePrice?: string | number
+  commodityHashName?: string
 }
 
 interface PreparedItem {
@@ -93,6 +96,7 @@ interface PreparedItem {
   referencePrice: number
   leaseDeposit: string
   leaseUnitPrice: string
+  commodityHashName: string
   status: 'prepared' | 'skipped'
 }
 
@@ -175,10 +179,11 @@ export async function POST(): Promise<Response> {
       const commodityId = commodity.id
       const templateId = Number(commodity.templateId)
       const referencePrice = parseMoney(commodity.referencePrice)
+      const commodityHashName = commodity.commodityHashName
 
-      if (!commodityId || !Number.isFinite(templateId) || templateId <= 0 || !Number.isFinite(referencePrice)) {
+      if (!commodityId || !Number.isFinite(templateId) || templateId <= 0 || !Number.isFinite(referencePrice) || !commodityHashName) {
         result.skipped++
-        result.errors.push(`商品 ${String(commodityId ?? 'unknown')}: 缺少 id/templateId/referencePrice`)
+        result.errors.push(`商品 ${String(commodityId ?? 'unknown')}: 缺少 id/templateId/referencePrice/commodityHashName`)
         continue
       }
 
@@ -202,23 +207,31 @@ export async function POST(): Promise<Response> {
           CommodityList?: Array<{ LeaseUnitPrice?: string | number }>
         }
 
-        const leaseUnitPrice = leaseJson.data?.CommodityList?.[0]?.LeaseUnitPrice
+        const leaseUnitPrice0 = leaseJson.data?.CommodityList?.[0]?.LeaseUnitPrice
           ?? leaseJson.Data?.CommodityList?.[0]?.LeaseUnitPrice
           ?? leaseJson.CommodityList?.[0]?.LeaseUnitPrice
-        const rentPrice = parseMoney(leaseUnitPrice) - 0.01
 
-        if (!Number.isFinite(rentPrice)) {
+        const leaseUnitPrice1 = leaseJson.data?.CommodityList?.[1]?.LeaseUnitPrice
+          ?? leaseJson.Data?.CommodityList?.[1]?.LeaseUnitPrice
+          ?? leaseJson.CommodityList?.[1]?.LeaseUnitPrice
+
+        if (!leaseUnitPrice0 || !leaseUnitPrice1) {
           result.skipped++
           result.errors.push(`商品 ${String(commodityId)}: 未获取到有效 LeaseUnitPrice`)
           continue
         }
 
+        const diff = (Number(leaseUnitPrice1)) - (Number(leaseUnitPrice0))
+
+        const rentPrice = diff >= 0.04 ? parseMoney(leaseUnitPrice1) - 0.02 : parseMoney(leaseUnitPrice0) - 0.01
+
         result.items.push({
           commodityId,
           templateId,
           referencePrice,
-          leaseDeposit: toMoneyString(referencePrice * 1.7),
+          leaseDeposit: toMoneyString(referencePrice * 1.6 - 1),
           leaseUnitPrice: toMoneyString(rentPrice),
+          commodityHashName,
           status: 'prepared',
         })
         result.prepared++
@@ -236,14 +249,25 @@ export async function POST(): Promise<Response> {
       })
     }
 
-    console.log('@@result.items', JSON.stringify({
-      Commoditys: result.items.map(buildCommodityPayload),
-      Version: VERSION,
-      Platform: 'ios',
+
+    await postYoupin(INVENTORY_UPLOAD_INIT_URL, {
       GameID: String(GAME_ID),
+      Version: VERSION,
+      AppType: '3',
+      uploadChannel: 0,
+      SessionId: headers['DeviceToken'],
+      hashNameList: result.items.map(item => item.commodityHashName),
+      Platform: 'ios',
+    }, 'inventoryUploadInit')
+
+    await postYoupin(CHANGE_PRICE_INIT_INFO_URL, {
+      commodityIdList: result.items.map(item => item.commodityId),
+      Version: VERSION,
+      changePriceChannel: 0,
+      Platform: 'ios',
       AppType: '3',
       SessionId: headers['DeviceToken'],
-    }))
+    }, 'changePriceInitInfo')
 
     const priceChangeJson = await postYoupin(PRICE_CHANGE_URL, {
       Commoditys: result.items.map(buildCommodityPayload),
